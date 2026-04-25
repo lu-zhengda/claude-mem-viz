@@ -15,6 +15,9 @@ coverage.out
 *.test
 *.prof
 
-# Local notes
+# Local notes (committed docs live in docs/ — only ignore ad-hoc dirs)
 plans/
-docs/
+
+# vhs frame output before promotion to docs/screenshot.png
+docs/_frames.png/
+docs/screenshot.png.frames/

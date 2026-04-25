@@ -1,16 +1,14 @@
 # claude-mem-viz
 
-A small TUI for browsing and editing [Claude Code](https://claude.com/claude-code) auto-memory files under `~/.claude/`.
+> Ever wonder what Claude Code actually remembers about you and your projects?
+> When was each memory last updated? Are some of them stale? Did Claude write
+> a file but forget to add it to the index, so it's quietly being ignored?
 
-Claude stores per-project memory as plain markdown under `~/.claude/projects/<slug>/memory/`, indexed by a `MEMORY.md` file. Editing these by hand means navigating slugified paths, remembering frontmatter shape, and keeping the index in sync. `claude-mem-viz` makes that easy:
+`claude-mem-viz` is a small TUI that opens up Claude Code's auto-memory at
+`~/.claude/` so you can browse, edit, prune, and audit it like any other
+filesystem — across every project on your machine, all in one place.
 
-- Three-pane layout: projects → memories → content
-- View frontmatter + glamour-rendered markdown body
-- Edit any memory in `$EDITOR` (suspend/resume the TUI)
-- Create new memories with the right frontmatter scaffold and auto-index
-- Delete memories and keep `MEMORY.md` consistent
-- Fuzzy search across every memory in every project
-- Audit warnings for orphan files, dangling index lines, and stale memories
+![claude-mem-viz screenshot](docs/screenshot.png)
 
 ## Quick start
 
@@ -35,12 +33,19 @@ go build .
 ./claude-mem-viz
 ```
 
+Try it without touching your real memory:
+
+```sh
+./claude-mem-viz --root docs/demo-claude
+```
+
 ## Usage
 
 ```sh
 claude-mem-viz                     # open TUI on ~/.claude
 claude-mem-viz --root /alt/path    # use a different .claude root
 claude-mem-viz --stale-days 60     # flag memories older than 60 days
+claude-mem-viz --list              # non-interactive dump
 ```
 
 ## Keys
@@ -60,32 +65,26 @@ claude-mem-viz --stale-days 60     # flag memories older than 60 days
 | `?` | help (includes memory-type legend) |
 | `q` / `ctrl+c` | quit |
 
-When `n` is pressed from the `<global>` view, the form prepends a project-picker stage so you can scaffold a new memory in any project without changing focus first.
+When `n` is pressed from the `<global>` view, the form prepends a
+project-picker stage so you can scaffold a new memory in any project without
+changing focus first.
 
-`x` (unindex) lets you "park" a memory: the file stays on disk but Claude won't load it through `MEMORY.md`. Press `f` on the resulting orphan entry to put it back into the index later.
+`x` (unindex) lets you "park" a memory: the file stays on disk but Claude
+won't load it through `MEMORY.md`. Press `f` on the resulting orphan entry to
+put it back into the index later.
 
-## Audit behaviors
+## Audit warnings
 
-`claude-mem-viz` flags three kinds of inconsistency, shown as `⚠N` next to a project and as a chip on the affected memory:
+`claude-mem-viz` flags three kinds of inconsistency between the files on disk
+and the `MEMORY.md` index, shown as `⚠N` next to a project and as a chip on
+each affected memory:
 
 - **orphan** — file exists in the memory dir but not referenced in `MEMORY.md`
-- **dangling** — `MEMORY.md` references a file that doesn't exist
+  (Claude won't load it)
+- **dangling** — `MEMORY.md` references a file that doesn't exist (broken link)
 - **stale** — file mtime is older than `--stale-days` (default 90)
 
 Press `f` on an orphan or dangling entry to auto-fix the index.
-
-## Layout
-
-```
-┌─ Projects (12) ──────┬─ Memories (3) ─────────┬─ Content ───────────────┐
-│ ▸ <global>           │   project_liteoauthllm │ ---                     │
-│   Documents/Github   │ ▸ MEMORY.md (index)    │ name: liteoauthllm ...  │
-│   .../myfeed         │                        │ type: project           │
-│   .../mnemonik       │                        │ ---                     │
-│   .../litemem        │                        │ liteoauthllm is a ...   │
-└──────────────────────┴────────────────────────┴─────────────────────────┘
- tab focus  ↑↓ move  enter open  e edit  n new  d delete  / search  ? help  q quit
-```
 
 ## License
 
