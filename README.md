@@ -8,7 +8,7 @@
 `~/.claude/` so you can browse, edit, prune, and audit it like any other
 filesystem — across every project on your machine, all in one place.
 
-![claude-mem-viz screenshot](docs/screenshot.png)
+![claude-mem-viz screenshot](images/screenshot.png)
 
 ## Quick start
 
