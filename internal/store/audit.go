@@ -57,6 +57,9 @@ func audit(p *Project, now time.Time, staleDays int) []Issue {
 			}
 		}
 		for _, m := range p.Memories {
+			if m.External {
+				continue
+			}
 			if !indexed[m.File] {
 				issues = append(issues, Issue{
 					Kind:   OrphanFile,

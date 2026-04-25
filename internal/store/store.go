@@ -37,7 +37,7 @@ type Project struct {
 // Memory is one parsed memory file.
 type Memory struct {
 	Path        string
-	File        string // basename
+	File        string // basename (or rel path for global rules)
 	Name        string
 	Description string
 	Type        string
@@ -46,12 +46,18 @@ type Memory struct {
 	InIndex     bool
 	HasFM       bool
 	Stale       bool
+	// External is true when the file lives outside the project's memory dir.
+	// Currently used for the project's own CLAUDE.md (lives in the project
+	// root). External memories cannot be deleted, unindexed, or audit-fixed
+	// through this tool — only viewed and edited.
+	External bool
 }
 
 // Load walks ~/.claude and returns a fresh snapshot. Errors reading individual
 // files are tolerated — affected memories are still listed but marked HasFM=false.
 func Load(root string, staleDays int) (Snapshot, error) {
 	snap := Snapshot{Root: root, StaleDays: staleDays}
+	home := os.Getenv("HOME")
 
 	global, err := loadGlobal(root)
 	if err != nil {
@@ -74,7 +80,7 @@ func Load(root string, staleDays int) (Snapshot, error) {
 		if _, err := os.Stat(memDir); err != nil {
 			continue
 		}
-		p, err := loadProject(e.Name(), memDir)
+		p, err := loadProject(e.Name(), memDir, home)
 		if err != nil {
 			return snap, fmt.Errorf("load project %s: %w", e.Name(), err)
 		}
@@ -140,7 +146,7 @@ func loadGlobal(root string) (Project, error) {
 	return p, nil
 }
 
-func loadProject(slug, memDir string) (Project, error) {
+func loadProject(slug, memDir, home string) (Project, error) {
 	p := Project{
 		Slug:      slug,
 		Label:     unslug(slug),
@@ -177,7 +183,65 @@ func loadProject(slug, memDir string) (Project, error) {
 	sort.Slice(p.Memories, func(i, j int) bool {
 		return p.Memories[i].File < p.Memories[j].File
 	})
+
+	// Project's own CLAUDE.md (lives in the project root, not the memory dir).
+	// Prepended after sorting so it always shows first.
+	if claudeMD := findProjectClaudeMD(slug, home); claudeMD != "" {
+		if mem, err := readMemory(claudeMD); err == nil {
+			mem.External = true
+			if mem.Name == "" {
+				mem.Name = "CLAUDE.md"
+			}
+			if mem.Description == "" {
+				mem.Description = "Project instructions"
+			}
+			p.Memories = append([]Memory{mem}, p.Memories...)
+		}
+	}
+
 	return p, nil
+}
+
+// findProjectClaudeMD returns the path to <project>/CLAUDE.md if it exists,
+// inferring the project path from the slug via slugToPath.
+func findProjectClaudeMD(slug, home string) string {
+	projPath := slugToPath(slug, home)
+	if projPath == "" {
+		return ""
+	}
+	candidate := filepath.Join(projPath, "CLAUDE.md")
+	if _, err := os.Stat(candidate); err != nil {
+		return ""
+	}
+	return candidate
+}
+
+// slugToPath inverts the slugging Claude Code applies to absolute project
+// paths. Since slugging turns both "/" and "." into "-", the inverse is
+// ambiguous. We can recover the path reliably only when it sits under $HOME:
+// match the slugified $HOME as a prefix and treat the remaining "-" as "/".
+func slugToPath(slug, home string) string {
+	if home == "" {
+		return ""
+	}
+	slugHome := slugifyPath(home)
+	if !strings.HasPrefix(slug, slugHome) {
+		return ""
+	}
+	rest := slug[len(slugHome):]
+	if rest == "" {
+		return home
+	}
+	if !strings.HasPrefix(rest, "-") {
+		return ""
+	}
+	return home + strings.ReplaceAll(rest, "-", "/")
+}
+
+func slugifyPath(p string) string {
+	s := strings.ReplaceAll(p, "/", "-")
+	s = strings.ReplaceAll(s, ".", "-")
+	return s
 }
 
 func readMemory(path string) (Memory, error) {

@@ -98,6 +98,10 @@ func (a App) updateMemories(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			a.flash("can't delete global memories", true)
 			return a, nil
 		}
+		if mem.External {
+			a.flash("can't delete the project's CLAUDE.md from this tool", true)
+			return a, nil
+		}
 		a.confirm.open(
 			"Delete memory?",
 			fmt.Sprintf("Remove %s from %s and drop its MEMORY.md line.\nThis cannot be undone.", mem.File, proj.Label),
@@ -110,6 +114,10 @@ func (a App) updateMemories(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if proj.IsGlobal {
 			a.flash("global has no index to unindex from", true)
+			return a, nil
+		}
+		if mem.External {
+			a.flash("CLAUDE.md isn't in the index — nothing to unindex", false)
 			return a, nil
 		}
 		if !mem.InIndex {
@@ -282,6 +290,10 @@ func (a *App) fixCurrentIssue() {
 	proj := a.currentProject()
 	mem := a.currentMemory()
 	if proj == nil || mem == nil || proj.IsGlobal {
+		return
+	}
+	if mem.External {
+		a.flash("CLAUDE.md isn't tracked in MEMORY.md — nothing to fix", false)
 		return
 	}
 	issues := proj.IssuesFor(mem.File)

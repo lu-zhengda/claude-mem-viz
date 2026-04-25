@@ -154,7 +154,9 @@ func (a *App) rebuildMemoriesList() {
 	for _, m := range proj.Memories {
 		// Build chips right-to-left: type, then age, then status flags.
 		var chips []string
-		if m.Type != "" {
+		if m.External {
+			chips = append(chips, chip.Render("project root"))
+		} else if m.Type != "" {
 			chips = append(chips, chip.Render(m.Type))
 		}
 		if age := ageString(m.ModTime); age != "" {
@@ -163,7 +165,7 @@ func (a *App) rebuildMemoriesList() {
 		if m.Stale {
 			chips = append(chips, chipWarn.Render("stale"))
 		}
-		if !proj.IsGlobal && !m.InIndex {
+		if !proj.IsGlobal && !m.External && !m.InIndex {
 			chips = append(chips, chipWarn.Render("orphan"))
 		}
 		secondary := strings.Join(chips, " ")

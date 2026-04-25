@@ -60,7 +60,9 @@ func runList(root string, staleDays int) {
 				tag = "-"
 			}
 			flags := ""
-			if !p.IsGlobal && !m.InIndex {
+			if m.External {
+				flags += " (project root)"
+			} else if !p.IsGlobal && !m.InIndex {
 				flags += " orphan"
 			}
 			if m.Stale {

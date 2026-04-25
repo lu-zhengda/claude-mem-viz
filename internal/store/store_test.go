@@ -532,6 +532,119 @@ func TestLoadGlobalWithRules(t *testing.T) {
 	}
 }
 
+func TestSlugToPath(t *testing.T) {
+	cases := []struct {
+		slug string
+		home string
+		want string
+	}{
+		{"-Users-zhengda-lu", "/Users/zhengda.lu", "/Users/zhengda.lu"},
+		{"-Users-zhengda-lu-Documents-Github", "/Users/zhengda.lu", "/Users/zhengda.lu/Documents/Github"},
+		{"-Users-zhengda-lu-Documents-Github-myfeed", "/Users/zhengda.lu", "/Users/zhengda.lu/Documents/Github/myfeed"},
+		{"-Users-someone-else-foo", "/Users/zhengda.lu", ""}, // not under home
+		{"-private-var-folders-x-tmp", "/Users/zhengda.lu", ""},
+		{"", "/Users/zhengda.lu", ""},
+		{"-Users-zhengda-lu-Documents", "", ""}, // empty home
+	}
+	for _, tc := range cases {
+		got := slugToPath(tc.slug, tc.home)
+		if got != tc.want {
+			t.Errorf("slugToPath(%q, %q) = %q, want %q", tc.slug, tc.home, got, tc.want)
+		}
+	}
+}
+
+func TestLoadProjectIncludesProjectClaudeMD(t *testing.T) {
+	// Build a fake home with a project that has CLAUDE.md, plus a .claude
+	// memory dir whose slug points at that project.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	projectPath := filepath.Join(home, "code", "myapp")
+	if err := os.MkdirAll(projectPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(projectPath, "CLAUDE.md"), []byte(`# Project instructions
+
+Use the testdb package for integration tests.
+`))
+
+	// .claude root with the matching slug. slugify(home + "/code/myapp") =
+	// home-with-dashes + "-code-myapp"
+	root := filepath.Join(home, ".claude")
+	slug := slugifyPath(projectPath)
+	memDir := filepath.Join(root, "projects", slug, "memory")
+	if err := os.MkdirAll(memDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(memDir, "feedback_x.md"), []byte(`---
+name: x
+description: a feedback memory
+type: feedback
+---
+body
+`))
+	mustWrite(t, filepath.Join(memDir, IndexFilename), []byte(`# Memory Index
+
+- [feedback_x.md](feedback_x.md) — a feedback memory
+`))
+
+	snap, err := Load(root, 90)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	proj := snap.FindProject(slug)
+	if proj == nil {
+		t.Fatalf("project %q not loaded", slug)
+	}
+
+	if len(proj.Memories) != 2 {
+		t.Fatalf("expected 2 memories (CLAUDE.md + feedback_x), got %d", len(proj.Memories))
+	}
+	// CLAUDE.md should be first.
+	if !proj.Memories[0].External {
+		t.Errorf("first memory should be External (project CLAUDE.md), got %+v", proj.Memories[0])
+	}
+	if proj.Memories[0].File != "CLAUDE.md" {
+		t.Errorf("first memory file = %q, want CLAUDE.md", proj.Memories[0].File)
+	}
+	if proj.Memories[1].File != "feedback_x.md" {
+		t.Errorf("second memory file = %q, want feedback_x.md", proj.Memories[1].File)
+	}
+
+	// External should NOT be flagged as orphan in audit.
+	for _, iss := range proj.Issues {
+		if iss.Target == "CLAUDE.md" {
+			t.Errorf("CLAUDE.md should not produce audit issues, got %+v", iss)
+		}
+	}
+}
+
+func TestLoadProjectWithoutClaudeMD(t *testing.T) {
+	// Project path doesn't exist on disk → no CLAUDE.md added, no error.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	root := filepath.Join(home, ".claude")
+	slug := slugifyPath(filepath.Join(home, "doesnotexist"))
+	memDir := filepath.Join(root, "projects", slug, "memory")
+	if err := os.MkdirAll(memDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, filepath.Join(memDir, "lone.md"), []byte("---\nname: lone\ntype: project\ndescription: x\n---\nbody\n"))
+
+	snap, err := Load(root, 90)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	proj := snap.FindProject(slug)
+	if proj == nil {
+		t.Fatal("project not loaded")
+	}
+	if len(proj.Memories) != 1 {
+		t.Errorf("expected 1 memory (no CLAUDE.md to add), got %d", len(proj.Memories))
+	}
+}
+
 func mustWrite(t *testing.T, path string, data []byte) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
