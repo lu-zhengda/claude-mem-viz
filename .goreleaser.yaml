@@ -1,0 +1,55 @@
+version: 2
+
+project_name: claude-mem-viz
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - main: .
+    binary: claude-mem-viz
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+
+archives:
+  - formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+homebrew_casks:
+  - repository:
+      owner: lu-zhengda
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: "https://github.com/lu-zhengda/claude-mem-viz"
+    description: "TUI for browsing and editing Claude Code auto-memory files"
+    license: "MIT"
+    binaries:
+      - claude-mem-viz
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/claude-mem-viz"]
+          end
