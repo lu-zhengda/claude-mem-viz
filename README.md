@@ -33,12 +33,6 @@ go build .
 ./claude-mem-viz
 ```
 
-Try it without touching your real memory:
-
-```sh
-./claude-mem-viz --root docs/demo-claude
-```
-
 ## Usage
 
 ```sh
