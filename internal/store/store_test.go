@@ -610,8 +610,8 @@ func TestSlugToPath(t *testing.T) {
 }
 
 func TestLoadProjectIncludesProjectClaudeMD(t *testing.T) {
-	// Build a fake home with a project that has CLAUDE.md, plus a .claude
-	// memory dir whose slug points at that project.
+	// Build a fake home with a project that has CLAUDE.md and AGENTS.md,
+	// plus a .claude memory dir whose slug points at that project.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
@@ -622,6 +622,10 @@ func TestLoadProjectIncludesProjectClaudeMD(t *testing.T) {
 	mustWrite(t, filepath.Join(projectPath, "CLAUDE.md"), []byte(`# Project instructions
 
 Use the testdb package for integration tests.
+`))
+	mustWrite(t, filepath.Join(projectPath, "AGENTS.md"), []byte(`# Agents
+
+Codex agent uses repo-root scripts/test.
 `))
 
 	// .claude root with the matching slug. slugify(home + "/code/myapp") =
@@ -653,24 +657,31 @@ body
 		t.Fatalf("project %q not loaded", slug)
 	}
 
-	if len(proj.Memories) != 2 {
-		t.Fatalf("expected 2 memories (CLAUDE.md + feedback_x), got %d", len(proj.Memories))
+	if len(proj.Memories) != 3 {
+		t.Fatalf("expected 3 memories (CLAUDE.md + AGENTS.md + feedback_x), got %d", len(proj.Memories))
 	}
-	// CLAUDE.md should be first.
-	if !proj.Memories[0].External {
-		t.Errorf("first memory should be External (project CLAUDE.md), got %+v", proj.Memories[0])
+	// CLAUDE.md first, AGENTS.md second, then feedback_x.
+	wantOrder := []struct {
+		file     string
+		external bool
+	}{
+		{"CLAUDE.md", true},
+		{"AGENTS.md", true},
+		{"feedback_x.md", false},
 	}
-	if proj.Memories[0].File != "CLAUDE.md" {
-		t.Errorf("first memory file = %q, want CLAUDE.md", proj.Memories[0].File)
-	}
-	if proj.Memories[1].File != "feedback_x.md" {
-		t.Errorf("second memory file = %q, want feedback_x.md", proj.Memories[1].File)
+	for i, w := range wantOrder {
+		if proj.Memories[i].File != w.file {
+			t.Errorf("memory[%d] file = %q, want %q", i, proj.Memories[i].File, w.file)
+		}
+		if proj.Memories[i].External != w.external {
+			t.Errorf("memory[%d] (%s) External = %v, want %v", i, w.file, proj.Memories[i].External, w.external)
+		}
 	}
 
-	// External should NOT be flagged as orphan in audit.
+	// Externals should NOT be flagged as orphans in audit.
 	for _, iss := range proj.Issues {
-		if iss.Target == "CLAUDE.md" {
-			t.Errorf("CLAUDE.md should not produce audit issues, got %+v", iss)
+		if iss.Target == "CLAUDE.md" || iss.Target == "AGENTS.md" {
+			t.Errorf("%s should not produce audit issues, got %+v", iss.Target, iss)
 		}
 	}
 }

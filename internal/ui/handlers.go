@@ -99,7 +99,7 @@ func (a App) updateMemories(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if mem.External {
-			a.flash("can't delete the project's CLAUDE.md from this tool", true)
+			a.flash(fmt.Sprintf("can't delete the project's %s from this tool", mem.File), true)
 			return a, nil
 		}
 		a.confirm.open(
@@ -117,7 +117,7 @@ func (a App) updateMemories(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		if mem.External {
-			a.flash("CLAUDE.md isn't in the index — nothing to unindex", false)
+			a.flash(fmt.Sprintf("%s isn't in the index — nothing to unindex", mem.File), false)
 			return a, nil
 		}
 		if !mem.InIndex {
@@ -293,7 +293,7 @@ func (a *App) fixCurrentIssue() {
 		return
 	}
 	if mem.External {
-		a.flash("CLAUDE.md isn't tracked in MEMORY.md — nothing to fix", false)
+		a.flash(fmt.Sprintf("%s isn't tracked in MEMORY.md — nothing to fix", mem.File), false)
 		return
 	}
 	issues := proj.IssuesFor(mem.File)

@@ -184,32 +184,47 @@ func loadProject(slug, memDir, home string) (Project, error) {
 		return p.Memories[i].File < p.Memories[j].File
 	})
 
-	// Project's own CLAUDE.md (lives in the project root, not the memory dir).
-	// Prepended after sorting so it always shows first.
-	if claudeMD := findProjectClaudeMD(slug, home); claudeMD != "" {
-		if mem, err := readMemory(claudeMD); err == nil {
-			mem.External = true
-			if mem.Name == "" {
-				mem.Name = "CLAUDE.md"
-			}
-			if mem.Description == "" {
-				mem.Description = "Project instructions"
-			}
-			p.Memories = append([]Memory{mem}, p.Memories...)
+	// Project-root instruction files (CLAUDE.md, AGENTS.md). They live outside
+	// the memory dir, so we prepend them after sorting so they always show
+	// first in the order listed.
+	externals := []struct{ name, desc string }{
+		{"CLAUDE.md", "Project instructions"},
+		{"AGENTS.md", "Project agents"},
+	}
+	var prepend []Memory
+	for _, ext := range externals {
+		path := findProjectFile(slug, home, ext.name)
+		if path == "" {
+			continue
 		}
+		mem, err := readMemory(path)
+		if err != nil {
+			continue
+		}
+		mem.External = true
+		if mem.Name == "" {
+			mem.Name = ext.name
+		}
+		if mem.Description == "" {
+			mem.Description = ext.desc
+		}
+		prepend = append(prepend, mem)
+	}
+	if len(prepend) > 0 {
+		p.Memories = append(prepend, p.Memories...)
 	}
 
 	return p, nil
 }
 
-// findProjectClaudeMD returns the path to <project>/CLAUDE.md if it exists,
+// findProjectFile returns the path to <project>/<name> if it exists,
 // inferring the project path from the slug via slugToPath.
-func findProjectClaudeMD(slug, home string) string {
+func findProjectFile(slug, home, name string) string {
 	projPath := slugToPath(slug, home)
 	if projPath == "" {
 		return ""
 	}
-	candidate := filepath.Join(projPath, "CLAUDE.md")
+	candidate := filepath.Join(projPath, name)
 	if _, err := os.Stat(candidate); err != nil {
 		return ""
 	}
