@@ -349,16 +349,40 @@ func TestSlugifyName(t *testing.T) {
 }
 
 func TestUnslug(t *testing.T) {
-	cases := map[string]string{
-		"-Users-zhengda-lu-Documents-Github":        "Documents/Github",
-		"-Users-zhengda-lu-Documents-Github-myfeed": "Documents/Github/myfeed",
-		"-Users-zhengda-lu":                         "Users/zhengda/lu",
-		"-some-other-path":                          "some/other/path",
-	}
-	for in, want := range cases {
-		if got := unslug(in); got != want {
-			t.Errorf("unslug(%q) = %q, want %q", in, got, want)
+	// Real tree under home so the filesystem-based path can disambiguate
+	// dashed directory names (claude-mem-viz vs claude/mem/viz).
+	home := t.TempDir()
+	for _, p := range [][]string{
+		{"Documents", "Github"},
+		{"Documents", "Github", "myfeed"},
+		{"Documents", "Github", "claude-mem-viz"},
+	} {
+		if err := os.MkdirAll(filepath.Join(append([]string{home}, p...)...), 0o755); err != nil {
+			t.Fatal(err)
 		}
+	}
+	slugHome := slugifyPath(home)
+
+	cases := []struct {
+		name string
+		slug string
+		home string
+		want string
+	}{
+		{"shallow under home", slugHome + "-Documents-Github", home, "Documents/Github"},
+		{"plain leaf", slugHome + "-Documents-Github-myfeed", home, "Documents/Github/myfeed"},
+		{"dashed leaf", slugHome + "-Documents-Github-claude-mem-viz", home, "Documents/Github/claude-mem-viz"},
+		{"home itself", slugHome, home, ""},
+		// Slugs not resolvable on disk fall back to the dumb transform.
+		{"home-less fallback", "-Users-zhengda-lu-Documents-Github-myfeed", "", "Documents/Github/myfeed"},
+		{"not under home", "-some-other-path", home, "some/other/path"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := unslug(tc.slug, tc.home); got != tc.want {
+				t.Errorf("unslug(%q, %q) = %q, want %q", tc.slug, tc.home, got, tc.want)
+			}
+		})
 	}
 }
 

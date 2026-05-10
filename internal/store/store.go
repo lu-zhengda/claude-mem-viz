@@ -149,7 +149,7 @@ func loadGlobal(root string) (Project, error) {
 func loadProject(slug, memDir, home string) (Project, error) {
 	p := Project{
 		Slug:      slug,
-		Label:     unslug(slug),
+		Label:     unslug(slug, home),
 		Dir:       memDir,
 		IndexPath: filepath.Join(memDir, IndexFilename),
 	}
@@ -316,12 +316,22 @@ func markStale(p *Project, now time.Time, staleDays int) {
 	}
 }
 
-// unslug turns "-Users-zhengda-lu-Documents-Github-foo" into "Documents/Github/foo"
-// by stripping the user-prefix and converting `-` to `/`.
-func unslug(slug string) string {
+// unslug returns a short display label for a slug, e.g.
+// "-Users-zhengda-lu-Documents-Github-myfeed" → "Documents/Github/myfeed".
+// When the slug resolves to a real directory under home we use the actual
+// filesystem path so dashed/dotted directory names render correctly. The
+// home-less fallback treats every "-" as "/" — lossy, but the best we can
+// do without disk access.
+func unslug(slug, home string) string {
+	if home != "" {
+		if real := slugToPath(slug, home); real != "" {
+			if rel := strings.TrimPrefix(real, home); rel != real {
+				return strings.TrimPrefix(rel, "/")
+			}
+		}
+	}
 	s := strings.TrimPrefix(slug, "-")
 	s = strings.ReplaceAll(s, "-", "/")
-	// Strip "Users/<user>/" prefix when present so labels are shorter.
 	parts := strings.SplitN(s, "/", 4)
 	if len(parts) == 4 && parts[0] == "Users" {
 		return parts[3]
