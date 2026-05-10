@@ -533,24 +533,55 @@ func TestLoadGlobalWithRules(t *testing.T) {
 }
 
 func TestSlugToPath(t *testing.T) {
+	// Build a fake home with various directory shapes so we can exercise the
+	// filesystem-based resolver. slugToPath needs the directories to actually
+	// exist on disk to disambiguate "/" vs "-" vs ".".
+	home := t.TempDir()
+	mustMkdir := func(parts ...string) string {
+		p := filepath.Join(append([]string{home}, parts...)...)
+		if err := os.MkdirAll(p, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	mustMkdir("Documents", "Github")
+	mustMkdir("Documents", "Github", "myfeed")
+	mustMkdir("Documents", "Github", "claude-mem-viz")        // dash at the leaf
+	mustMkdir("Documents", "Github", "claude-mem-viz", "sub") // dash mid-path
+	// Backtracking case: "claude-mem-viz" exists but has no "subdir" child;
+	// "claude/mem-viz/subdir" does. Longest-first match must try the deep one
+	// next when the leaf lookup fails.
+	mustMkdir("Documents", "Github", "claude", "mem-viz", "subdir")
+	mustMkdir("with.dot")
+
+	slugHome := slugifyPath(home)
+
 	cases := []struct {
+		name string
 		slug string
 		home string
 		want string
 	}{
-		{"-Users-zhengda-lu", "/Users/zhengda.lu", "/Users/zhengda.lu"},
-		{"-Users-zhengda-lu-Documents-Github", "/Users/zhengda.lu", "/Users/zhengda.lu/Documents/Github"},
-		{"-Users-zhengda-lu-Documents-Github-myfeed", "/Users/zhengda.lu", "/Users/zhengda.lu/Documents/Github/myfeed"},
-		{"-Users-someone-else-foo", "/Users/zhengda.lu", ""}, // not under home
-		{"-private-var-folders-x-tmp", "/Users/zhengda.lu", ""},
-		{"", "/Users/zhengda.lu", ""},
-		{"-Users-zhengda-lu-Documents", "", ""}, // empty home
+		{"home itself", slugHome, home, home},
+		{"shallow under home", slugHome + "-Documents-Github", home, filepath.Join(home, "Documents", "Github")},
+		{"plain leaf", slugHome + "-Documents-Github-myfeed", home, filepath.Join(home, "Documents", "Github", "myfeed")},
+		{"dashed leaf", slugHome + "-Documents-Github-claude-mem-viz", home, filepath.Join(home, "Documents", "Github", "claude-mem-viz")},
+		{"dashed mid-path", slugHome + "-Documents-Github-claude-mem-viz-sub", home, filepath.Join(home, "Documents", "Github", "claude-mem-viz", "sub")},
+		{"backtrack past dashed sibling", slugHome + "-Documents-Github-claude-mem-viz-subdir", home, filepath.Join(home, "Documents", "Github", "claude", "mem-viz", "subdir")},
+		{"dotted dir", slugHome + "-with-dot", home, filepath.Join(home, "with.dot")},
+		{"not under home", "-Users-someone-else-foo", home, ""},
+		{"unrelated prefix", "-private-var-folders-x-tmp", home, ""},
+		{"missing on disk", slugHome + "-Documents-Github-does-not-exist", home, ""},
+		{"empty slug", "", home, ""},
+		{"empty home", "-Users-zhengda-lu-Documents", "", ""},
 	}
 	for _, tc := range cases {
-		got := slugToPath(tc.slug, tc.home)
-		if got != tc.want {
-			t.Errorf("slugToPath(%q, %q) = %q, want %q", tc.slug, tc.home, got, tc.want)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			got := slugToPath(tc.slug, tc.home)
+			if got != tc.want {
+				t.Errorf("slugToPath(%q, %q) = %q, want %q", tc.slug, tc.home, got, tc.want)
+			}
+		})
 	}
 }
 

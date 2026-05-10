@@ -217,9 +217,12 @@ func findProjectClaudeMD(slug, home string) string {
 }
 
 // slugToPath inverts the slugging Claude Code applies to absolute project
-// paths. Since slugging turns both "/" and "." into "-", the inverse is
-// ambiguous. We can recover the path reliably only when it sits under $HOME:
-// match the slugified $HOME as a prefix and treat the remaining "-" as "/".
+// paths. Slugging maps both "/" and "." to "-", so the inverse is ambiguous
+// from the slug alone (e.g. "claude-mem-viz" vs "claude/mem/viz"). We resolve
+// the ambiguity by walking the real filesystem under $HOME: at each level we
+// try every directory entry whose slugified name is a prefix of the remaining
+// slug, longest first, backtracking on dead ends. Returns "" if the slug
+// doesn't sit under $HOME or no path on disk reproduces it.
 func slugToPath(slug, home string) string {
 	if home == "" {
 		return ""
@@ -235,7 +238,42 @@ func slugToPath(slug, home string) string {
 	if !strings.HasPrefix(rest, "-") {
 		return ""
 	}
-	return home + strings.ReplaceAll(rest, "-", "/")
+	return resolveSlugRemainder(home, strings.TrimPrefix(rest, "-"))
+}
+
+// resolveSlugRemainder recursively matches `remaining` against subdirectories
+// of `current`, trying longest slug match first and backtracking on failure.
+func resolveSlugRemainder(current, remaining string) string {
+	if remaining == "" {
+		return current
+	}
+	entries, err := os.ReadDir(current)
+	if err != nil {
+		return ""
+	}
+	type cand struct {
+		name, slug string
+	}
+	var cands []cand
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		s := slugifyPath(e.Name())
+		if remaining == s || strings.HasPrefix(remaining, s+"-") {
+			cands = append(cands, cand{e.Name(), s})
+		}
+	}
+	sort.Slice(cands, func(i, j int) bool {
+		return len(cands[i].slug) > len(cands[j].slug)
+	})
+	for _, c := range cands {
+		next := strings.TrimPrefix(strings.TrimPrefix(remaining, c.slug), "-")
+		if got := resolveSlugRemainder(filepath.Join(current, c.name), next); got != "" {
+			return got
+		}
+	}
+	return ""
 }
 
 func slugifyPath(p string) string {
